@@ -1,102 +1,132 @@
-# from fastapi import FastAPI, Request
-# from pydantic import BaseModel, Field
-# from typing import Annotated
+# ==============================================================================
+# main.py - Fake News Verifier MCP Server for PuchAI Hackathon
+#
+# Author: [Your Name/Team Name]
+# Date: August 10, 2025
+#
+# Description:
+# This FastAPI server acts as a Model-Context-Protocol (MCP) provider for the
+# PuchAI assistant. It exposes a custom tool that allows users to submit a
+# news headline or claim and receive a verification analysis.
+#
+# For the purpose of this hackathon demo, the verification logic is mocked
+# to ensure a fast, reliable, and consistent user experience, bypassing
+# potential latencies from live fact-checking APIs.
+# ==============================================================================
 
-# # Import the get_news function we already created and tested
-# from news_fetcher import get_news
-
-# # Initialize our FastAPI application
-# app = FastAPI(
-#     title="Personalized News Aggregator",
-#     description="An MCP server that provides personalized news articles as a tool for an AI assistant.",
-# )
-
-# # --- Tool Definition ---
-# class NewsRequest(BaseModel):
-#     topic: Annotated[str, Field(description="The topic the user is interested in.")]
-
-# @app.post("/get_personalized_news")
-# async def get_personalized_news_endpoint(request: NewsRequest) -> dict:
-#     print(f"Received request for news on topic: {request.topic}")
-#     articles = get_news(request.topic)
-#     news_summary = "\n".join(articles)
-#     return {"content": f"Here are the latest articles about {request.topic}:\n{news_summary}"}
-
-
-# # --- MCP Manifest ---
-# # The endpoint that tells PuchAI what our server is and what tools it offers.
-# # We now accept BOTH GET and POST requests for maximum compatibility.
-
-# @app.get("/mcp")
-# @app.post("/mcp") # <<< THIS IS THE NEW LINE YOU ARE ADDING
-# def mcp_manifest():
-#     """
-#     Provides the manifest that describes the server's tools to PuchAI.
-#     """
-#     return {
-#         "name": "Personalized News Aggregator",
-#         "description": "Fetches personalized news articles for users.",
-#         "tools": {
-#             "news": {
-#                 "description": "Get the latest news about a specific topic.",
-#                 "use_when": "The user specifically asks for a 'news report' or 'news summary' on a topic.",
-#                 "endpoint": "/get_personalized_news",
-#                 "parameters": {
-#                     "topic": {
-#                         "type": "string",
-#                         "description": "The subject or topic of interest for news articles.",
-#                         "required": True
-#                     }
-#                 }
-#             }
-#         }
-#     }
-
-# # A simple root endpoint to easily check if the server is running
-# @app.get("/")
-# def read_root():
-#     return {"message": "Personalized News Aggregator MCP Server is running."}
-
+# --- Core Dependencies ---
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from typing import Annotated
 
-# We are not even importing the news_fetcher for this test
-# from news_fetcher import get_news
-
+# --- Application Initialization ---
+# Instantiate the FastAPI application. The title and description are used for
+# auto-generated API documentation (e.g., at the /docs endpoint).
 app = FastAPI(
-    title="MCP Test Server",
-    description="A server for testing a basic, instant tool.",
+    title="Fake News Verifier",
+    description="An MCP server that helps users fact-check news headlines.",
 )
 
-# --- NEW Hello World Tool Definition ---
-@app.post("/hello_world")
-async def hello_world_endpoint() -> dict:
+
+# --- Mocked Verification Logic ---
+# In a production environment, this function would connect to a live fact-checking
+# API or a database of known misinformation. For this demo, we use a mocked
+# response to guarantee instant performance and reliability.
+def verify_claim_mocked(claim: str) -> str:
     """
-    An instant tool that just says hello. It does no work.
+    Simulates the verification of a news claim and returns a formatted analysis.
+
+    Args:
+        claim (str): The suspicious headline or claim from the user.
+
+    Returns:
+        str: A formatted string containing the mock verification results.
     """
-    print("Received request for the hello_world tool!") # A new print statement!
-    return {"content": "Hello from my custom tool! The connection is working!"}
+    print(f"Verification request received for claim: '{claim}'. Returning mocked response.")
+    
+    # This response template can be customized to be more dynamic or detailed.
+    response_template = f"""
+Regarding the claim: "{claim}"
+
+Our analysis suggests the following:
+- **Credibility Score:** Low
+- **Source Analysis:** We could not find this claim reported by major, reputable news outlets (like BBC, Reuters, Associated Press).
+- **Recommendation:** This claim has the characteristics of misinformation. Please be cautious and avoid sharing it until it is confirmed by trusted sources.
+"""
+    return response_template
 
 
-# --- MCP Manifest ---
-# We have updated the manifest to only show the new tool.
+# --- PuchAI Integration Endpoints ---
+
+# The '/validate' endpoint is a mandatory security requirement from PuchAI.
+# It is called upon connection to verify that the user connecting the server
+# is the legitimate owner.
+@app.post("/validate")
+async def validate_endpoint() -> dict:
+    """
+    Handles the validation request from PuchAI by returning a hardcoded phone number.
+    
+    Note: In this demo version, the number is hardcoded for simplicity. In a
+    production server, this would be loaded securely from an environment variable.
+    """
+    my_number = "917755087157" # This must match the user's registered PuchAI number.
+    print(f"Validation request received. Returning hardcoded number: {my_number}")
+    return {"content": my_number}
+
+
+# Pydantic model for request body validation.
+# This ensures that any request to our '/verify_news' endpoint contains a 'claim' field.
+class VerifyRequest(BaseModel):
+    claim: Annotated[str, Field(description="The headline or claim the user wants to fact-check.")]
+
+
+# This is the primary tool endpoint for our application.
+@app.post("/verify_news")
+async def verify_news_endpoint(request: VerifyRequest) -> dict:
+    """
+    Receives a claim from PuchAI, processes it using our verification logic,
+    and returns the analysis.
+    """
+    analysis = verify_claim_mocked(request.claim)
+    # The response must be a JSON object with a "content" key.
+    return {"content": analysis}
+
+
+# The '/mcp' endpoint is the manifest that describes the server's capabilities to PuchAI.
+# It acts as a "menu" that the AI reads to learn what tools are available.
 @app.get("/mcp")
 @app.post("/mcp")
 def mcp_manifest():
+    """
+    Provides the MCP manifest.
+
+    This JSON object defines the server's identity and lists all available tools,
+    including their purpose, endpoint, and expected parameters. The 'use_when'
+    field is crucial, as it provides a natural language hint to the AI about
+    when to use a specific tool.
+    """
     return {
-        "name": "Connection Test Server",
-        "description": "A server to test a basic tool connection.",
+        "name": "Fake News Verifier",
+        "description": "A tool to help users fact-check and verify news claims.",
         "tools": {
-            "hello": { # Changed tool name to "hello"
-                "description": "A simple test tool that says hello.",
-                "use_when": "The user asks to say hello or run the connection test.",
-                "endpoint": "/hello_world", # Point to the new endpoint
-                "parameters": {} # No parameters needed
+            # The mandatory 'validate' tool for security.
+            "validate": {
+                "description": "Validates server ownership.",
+                "endpoint": "/validate",
+                "parameters": {}
+            },
+            # Our custom 'verify' tool.
+            "verify": {
+                "description": "Fact-checks a news headline or a claim.",
+                "use_when": "The user wants to verify, fact-check, or know if a piece of news is fake or real.",
+                "endpoint": "/verify_news",
+                "parameters": {
+                    "claim": {
+                        "type": "string",
+                        "description": "The suspicious news headline or claim to be verified.",
+                        "required": True
+                    }
+                }
             }
         }
     }
-
-@app.get("/")
-def read_root():
-    return {"message": "Test MCP Server is running."}
